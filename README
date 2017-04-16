@@ -1,0 +1,17 @@
+To generate the documentation, run
+
+```
+make html
+```
+
+If you would like to generate a PDF from the documentation, you will need the following
+texlive packages
+
+```
+dnf install texlive-framed texlive-wrapfig texlive-titlesec texlive-threeparttable texlive-upquote texlive-eqparbox texlive-multirow texlive-capt-of
+```
+
+Then you can run
+```
+make latexpdf
+```
