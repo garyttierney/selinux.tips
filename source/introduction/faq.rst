@@ -1,5 +1,5 @@
-Introduction
-=======================
+FAQ
+===
 
 selinux.tips is a book providing a detailed overview of the SELinux framework,
 it's uses, and how it is implemented.  Hopefully it should provide some insight
@@ -86,7 +86,7 @@ illustrate the need for mandatory access controls using a Linux server as our
 example platform.
 
 Using a security policy we can restrict privileged services (running as root)
-to prevent them interacting with each other services or reading any secret
+to prevent them interacting with other services or reading any secret
 data.  An example of this could be preventing Apache HTTPd from reading
 /etc/shadow or users home directories.  Or simply tampering with another
 services data files, such as MySQL.  In SELinux this is a model known as
@@ -114,5 +114,42 @@ reading any information at a higher clearance level than the users own.
 How does SELinux work?
 ----------------------
 
+SELinux, like many other MAC implementations in Linux, is implemented as a Linux
+Security Module.  Linux Security Modules are configurable extensions to the
+existing permissions model.  They are able to register hooks that perform
+additional authorization checks during operations in the kernel, such as
+opening a file, or mapping a file into memory.  Each LSM can choose to implement
+these hooks as it sees fit to achieve it's own security goals.
+
+In addition to implementing these hooks, LSM's often have a mechanism for
+mapping a set of security attributes, or credentials, to a process or file.
+SELinux achieves this by storing a security label (a set of security
+attributes) in the security namespace of a files extended attributes.
+
+This label contains 4 security attributes that identify the file: it's user,
+role, type, and multi-level security range.  When a process is started by
+executing a file, it gets it's own label that is derived from the file it was
+started from and rules in the policy.
+
 How is SELinux different from AppArmor?
 ---------------------------------------
+
+The most distinguishing feature that makes AppArmor different to SELinux is how
+it associates credentials with processes.  Rather than use a label based
+approach like SELinux or SMACK, where credentials are stored with each inode,
+and a process' credentials are derived from the file it was started from and
+subject who started it, AppArmor associates a security profile with a process
+based on the path of the file that was executed.
+
+This profile is a policy that restricts what capabilities the process can use
+and paths it can access.
+
+This approach lacks the flexibility of labeling, where we are primarily
+concerned with restricting information flow.  The biggest issue here is the
+ability to restrict what a process can do in different contexts.  For
+example, a security profile can't enforce identity-based access controls for
+the user who executed the program, instead relying on standard Linux
+discretionary access controls.  The same can be said for services running at
+different clearance (Multi-Level Security) levels.  Both of these problems
+are solved in SELinux by associating identity (user) and clearance (MLS range)
+attributes with processes and files.

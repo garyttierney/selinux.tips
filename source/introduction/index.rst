@@ -2,11 +2,11 @@ Introduction
 ============================
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 4
    :caption: Contents:
 
-   what-is-mac
-   what-is-selinux
+   faq
+   core-concepts-of-selinux
    selinux-policy-language
    selinux-userspace
    selinux-configuration-files

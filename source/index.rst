@@ -6,7 +6,7 @@ some insight on SELinux as a Mandatory Access Control implementation, as well as
 on troubleshooting issues that arise with systems running SELinux.
 
 .. toctree::
-   :maxdepth: 3
+   :maxdepth: 5
 
    introduction/index
    troubleshooting/index

@@ -1,29 +1,5 @@
-What is SELinux?
-================
-
-To understand how SELinux can improve software security and reduce attack surface
-in Linux distributions, it's first required to understand what SELinux really
-is and what it can do.  When most people think of SELinux, they think of the
-policy deployed by Red Hat on Fedora and Enterprise Linux operating systems.
-
-However, SELinux is really much more than that.  At the very core SELinux is
-a framework for building mandatory access control models, and a very flexible
-framework at that.
-
-Red Hat have put this framework to use to build a policy model which suits most
-of their customers, while in contrast the Android Open Source Project has used
-the framework to build a model for their specialized embedded Linux platform.
-
-These two particular implementations still resolve around the same core framework
-concepts but apply them in different ways.  The most common concept that people
-are familiar with (and illustrated by Máirín Duffy in the SELinux coloring
-book) is type-enforcement, though this just scratches the surface.  There are
-many building blocks that SELinux provides for us to create a security model,
-which we'll go into below.
-
-
-The core concepts of SELinux
-----------------------------
+Core concepts of SELinux
+========================
 
 Despite how flexible SELinux is, the core concepts are quite simple to
 understand.  Understanding how these concepts come together on a Linux
@@ -63,22 +39,39 @@ requested between the two sets of security attributes and returns the result
 back to the kernel function requesting the security check, optionally logging
 the check with the audit subsystem in the process.
 
-.. code-block:: txt
-    :caption: A declaration of a security class named ipc and its set of permissions.
+.. tabbed-code-block::
+    :caption: A declaration of a common security class named ipc and its set of permissions.
     
-    common ipc
-    {
-            create
-            destroy
-            getattr
-            setattr
-            read
-            write
-            associate
-            unix_read
-            unix_write
-    }
-
+    .. code-block:: CIL
+        
+        (common ipc
+            (
+                create
+                destroy
+                getattr
+                setattr
+                read
+                write
+                associate
+                unix_read
+                unix_write
+            )
+        )
+    
+    .. code-block:: Kernel_Policy
+         
+        common ipc
+        {
+                create
+                destroy
+                getattr
+                setattr
+                read
+                write
+                associate
+                unix_read
+                unix_write
+        }
 
 .. _security-attributes:
 
@@ -91,7 +84,7 @@ These attributes together create a **security label** (or context) which is
 what we see associated with files and processes via ``ls -Z`` and ``ps -Z``
 respectively.
 
-.. code-block:: txt 
+.. code-block:: text
     :caption: Output of ps -Z with annotated security attributes
     
     
@@ -135,11 +128,18 @@ that a role can be allowed to perform operations on.
 Unlike users and roles however, operations between two types can be constrained
 using a rich policy language feature known as **type-enforcement**.
 
-.. code-block:: c
+.. tabbed-code-block::
     :caption: Type-enforcement rules allowing access to permissions on the capability and file security classes.
     
-    allow init_t self : capability { mac_admin };
-    allow init_t bin_t : file { exec };
+    .. code-block:: CIL
+        
+        (allow init_t self (capability (mac_admin)))
+        (allow init_t bin_t (file (exec)))
+    
+    .. code-block:: Kernel_Policy
+        
+        allow init_t self : capability { mac_admin };
+        allow init_t bin_t : file { exec };
 
 Multi-Level Security Range
 ``````````````````````````
@@ -165,14 +165,13 @@ virtual machines (sVirt) and sandboxing of user applications respectively.
 
 Confining entities
 ~~~~~~~~~~~~~~~~~~
-
 Type-enforcement rules
 ``````````````````````
 
 The foundation of access control in SELinux is the previously mentioned
 type-enforcement rules.  A simple way to identify the permissions a user has
 would be to look at all type-enforcement rules that have a source type
-associated with one of the users roles.  By whitelisting what an entity can do,
+associated with one of the users roles.  By white-listing what an entity can do,
 it is very to reason about what operations are allowed on the system.
 
 Constrain expressions
@@ -210,24 +209,42 @@ executed (e.g., a service executed by init vs a user) transitions allow the
 policy author to determine the target type based on the types of the program
 requesting the transition and the file which was executed.
 
-::
+.. tabbed-code-block::
     
-    type_transition init_t service_exec_t:process service_t;
-    type_transition user_t service_exec_t:process user_service_t;
-                      ^             ^         ^          ^
-                  source type  target type    |   new type after transition
-                                              |
-                                        security class
-
-
-However, as mentioned type transitions are also applicable to when new objects are
-created and can be used to determine the type of a newly created object, additionally
-with a specified filename.
-
-::
+    .. code-block:: CIL
+        
+        (typetransition init_t service_exec_t process service_t)
+        (typetransition user_t service_exec_t process user_service_t)
+                          ^             ^         ^          ^
+                      source type  target type    |   new type after transition
+                                                  |
+                                            security class
     
-    type_transition init_t service_dir_t:file service_file_t;
-    type_transition init_t service_dir_t:file service_priv_file_t "private_file";
+    .. code-block:: Kernel_Policy
+        
+        type_transition init_t service_exec_t:process service_t;
+        type_transition user_t service_exec_t:process user_service_t;
+                          ^             ^         ^          ^
+                      source type  target type    |   new type after transition
+                                                  |
+                                            security class
+
+
+However, as mentioned type transitions are also applicable to the creation of
+new objects, with the added ability of matching on an object name for the
+transition.
+
+.. tabbed-code-block::
+    
+    .. code-block:: CIL
+        
+        (typetransition init_t service_dir_t file service_file_t)
+        (typetransition init_t service_dir_t file "private_file" service_priv_file_t)
+    
+    .. code-block:: Kernel_Policy
+        
+        type_transition init_t service_dir_t:file service_file_t;
+        type_transition init_t service_dir_t:file service_priv_file_t "private_file";
 
 These transitions above determine the type of a newly created file object with a parent
 directory that has a label type of ``service_dir_t``.  The "private_file" addition in
@@ -235,8 +252,102 @@ the second rule is a filename which is checked during transition.  If the name o
 file being created matches this, then ``service_priv_file_t`` will be used instead of
 ``service_file_t``.
 
+Object labeling
+~~~~~~~~~~~~~~~
+
+Since not all security attributes can come from the result of transition, SELinux
+needs a way to associate an initial or default security label with objects.  There
+are two mechanisms for doing this.  Initial security identifiers are reserved
+for kernel objects at initialization, and the policy author can associate
+a security label with each of these initial SIDs.
+
+
+.. tabbed-code-block::
+    :caption: Associating system_u:system_r:kernel_t:s0 with the initial kernel task security identifier
+    
+    .. code-block:: CIL
+        
+        (sid kernel)
+        (sidcontext kernel (system_u system_r kernel_t ((s0) ())))
+    
+    .. code-block:: Kernel_Policy
+        
+        sid kernel system_u:system_r:kernel_t:s0
+
+The second method is using context specifications in SELinux policy to match
+a set of object attributes to a security label.  This is done for filesystem
+objects using regular expressions to match paths.
+
+.. tabbed-code-block::
+    :caption: A file context specification which would associate content under /srv/test with system_u:object_r:test_t:s0
+    
+    .. code-block:: CIL
+        
+        (filecon "/srv/test(/.*)?" any (system_u system_r test_t ((s0) ())))
+    
+    .. code-block:: Kernel_Policy
+        
+        /srv/test(/.*)?     system_u:object_r:test_t:s0
+
+Though this only covers filesystem objects.  There are various types of objects
+in the Linux kernel, and there are several mechanisms for associating security
+labels with them.  For example, network ports also have support for associating
+contexts with ports on TCP or UDP sockets.
+
+.. tabbed-code-block::
+    :caption: Associate TCP port 43594 with system_u:object_r:test_port_t:s0
+    
+    .. code-block:: CIL
+        
+        (portcon tcp 43594 (system_u object_r test_port_t ((s0) ())))
+    
+    .. code-block:: Kernel_Policy
+        
+        portcon tcp 43594 system_u:object_r:test_port_t:s0
+
+And there is a similar policy language statement for network addresses.
+
+.. tabbed-code-block::
+    :caption: Associate 192.168.122.0/24 with system_u:object_r:test_addr_t:s0
+    
+    .. code-block:: CIL
+        
+        (nodecon (255.255.255.0) (192.168.122.0) (system_u object_r test_addr_t ((s0) ())))
+    
+    .. code-block:: Kernel_Policy
+        
+        nodecon 192.168.122.0 255.255.255.0 system_u:object_r:test_addr_t:s0
+
+Conditional Policy
+~~~~~~~~~~~~~~~~~~
+
+Conditional policy gives a way for policy authors to create policy which is
+tunable by the end-user.  It is very unlikely that one policy model will suit
+the needs of everyone, so toggleable booleans give an opportunity to set sensible
+defaults which can be changed when required.
+
 Common misconceptions
 ---------------------
+
+One of the most common misunderstandings about SELinux is that it doesn't
+lookup security attributes based on where files are on filesystem.  This occurs
+quite often when a user creates some web content in their home folder and
+later moves it to the web root.  Apache wouldn't be allowed to read users
+home directory content, so the user would get a permissions error when
+Apache tries to serve the content.  The cause of this issue is due to the fact
+that SELinux associates security attributes with the file itself, in contrast
+to looking them up based on where the file currently exists.  An example
+implementation of the latter path-based Mandatory Access Control is AppArmor,
+which uses paths in its policies to control permissions.
+
+An example of how this issue would come up is demonstrated below:
+
+.. code-block:: bash
+   
+   echo 'hello' > $HOME/my_file.txt # File created with its type attribute set to that of its parent, i.e., $HOME
+   mv $HOME/my_file.txt /var/www/html/my_file.txt # File still has the type of a filee created in $HOME
+   restorecon /var/www/html/my_file.txt # Lookup a file context specification for the file, and reset it to that
+   
 
 What is SELinux not?
 --------------------
